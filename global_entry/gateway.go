@@ -60,13 +60,16 @@ func PollSlotAvailabilityURL(options PollOptions) {
 			url := slotAvailabilityURL(id)
 			//fmt.Printf("Querying url: %q\n", url)
 
-			resp, err := http.Get(url)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-				log.Fatalln(err)
-			}
+			func() {
+				resp, err := http.Get(url)
+				if err != nil {
+					log.Fatalln(err)
+				}
+				defer resp.Body.Close()
+				if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+					log.Fatalln(err)
+				}
+			}()
 
 			if len(data.SlotData) > 0 {
 				dateTime := APITimeToDateTime(data.SlotData[0].StartTimestamp)
@@ -112,13 +115,16 @@ func PollLocationRangesURL(options PollOptions) {
 			url := locationRangesURL(id, options.RangeBegin, options.RangeEnd)
 			//fmt.Printf("Querying url: %q\n", url)
 
-			resp, err := http.Get(url)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-				log.Fatalln(err)
-			}
+			func() {
+				resp, err := http.Get(url)
+				if err != nil {
+					log.Fatalln(err)
+				}
+				defer resp.Body.Close()
+				if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+					log.Fatalln(err)
+				}
+			}()
 
 			if len(data) > 0 {
 				for _, d := range data {
@@ -155,6 +161,7 @@ func Locations() []*LocationInfo {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		log.Fatalln(err)
 	}
