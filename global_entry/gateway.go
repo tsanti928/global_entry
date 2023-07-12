@@ -3,7 +3,6 @@ package global_entry
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -45,7 +44,7 @@ func APITimeToDateTime(input string) string {
 // PollSlotAvailabilityURL polls the slot availability URL for matching
 // available appointments for input location IDs in provided time range.
 // Only the first matching time for each location is used as a candidate.
-func PollSlotAvailabilityURL(options PollOptions) {
+func PollSlotAvailabilityURL(options PollOptions) error {
 	var data SlotAvailabilityData
 	for {
 		fmt.Println("Starting the queries...")
@@ -55,33 +54,37 @@ func PollSlotAvailabilityURL(options PollOptions) {
 			name := options.IDMap[id].Name
 			loc, err := time.LoadLocation(options.IDMap[id].TimeZone)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 			url := slotAvailabilityURL(id)
 			//fmt.Printf("Querying url: %q\n", url)
 
-			func() {
+			decode := func() error {
 				resp, err := http.Get(url)
 				if err != nil {
-					log.Fatalln(err)
+					return err
 				}
 				defer resp.Body.Close()
 				if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-					log.Fatalln(err)
+					return err
 				}
-			}()
+				return nil
+			}
+			if err := decode(); err != nil {
+				return err
+			}
 
 			if len(data.SlotData) > 0 {
 				dateTime := APITimeToDateTime(data.SlotData[0].StartTimestamp)
 				inRange, err := timeInRange(dateTime, options.RangeBegin, options.RangeEnd)
 				if err != nil {
-					log.Fatalln(err)
+					return err
 				}
 
 				if inRange {
 					time, err := time.ParseInLocation(time.DateTime, dateTime, loc)
 					if err != nil {
-						log.Fatal(err)
+						return err
 					}
 
 					candidates = append(candidates, fmt.Sprintf("City: %s Name: %s ID: %d Time: %s", options.IDMap[id].City, name, id, time.String()))
@@ -90,7 +93,7 @@ func PollSlotAvailabilityURL(options PollOptions) {
 		}
 		if len(candidates) > 0 {
 			options.OnSuccess(candidates)
-			return
+			return nil
 		}
 		fmt.Printf("No matches found. Trying again in %d seconds.\n", options.SleepDuration)
 		time.Sleep(options.SleepDuration * time.Second)
@@ -100,7 +103,7 @@ func PollSlotAvailabilityURL(options PollOptions) {
 // PollLocationRangesURL polls the location URL for matching
 // available appointments for input location IDs in provided time range.
 // Only the first matching time for each location is used as a candidate.
-func PollLocationRangesURL(options PollOptions) {
+func PollLocationRangesURL(options PollOptions) error {
 	for {
 		fmt.Println("Starting the queries...")
 
@@ -110,21 +113,25 @@ func PollLocationRangesURL(options PollOptions) {
 			name := options.IDMap[id].Name
 			loc, err := time.LoadLocation(options.IDMap[id].TimeZone)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 			url := locationRangesURL(id, options.RangeBegin, options.RangeEnd)
 			//fmt.Printf("Querying url: %q\n", url)
 
-			func() {
+			decode := func() error {
 				resp, err := http.Get(url)
 				if err != nil {
-					log.Fatalln(err)
+					return err
 				}
 				defer resp.Body.Close()
 				if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-					log.Fatalln(err)
+					return err
 				}
-			}()
+				return nil
+			}
+			if err := decode(); err != nil {
+				return err
+			}
 
 			if len(data) > 0 {
 				for _, d := range data {
@@ -135,7 +142,7 @@ func PollLocationRangesURL(options PollOptions) {
 					dateTime := APITimeToDateTime(d.Timestamp)
 					time, err := time.ParseInLocation(time.DateTime, dateTime, loc)
 					if err != nil {
-						log.Fatal(err)
+						return err
 					}
 
 					candidates = append(candidates, fmt.Sprintf("City: %s Name: %s ID: %d Time: %s", options.IDMap[id].City, name, id, time.String()))
@@ -145,7 +152,7 @@ func PollLocationRangesURL(options PollOptions) {
 		}
 		if len(candidates) > 0 {
 			options.OnSuccess(candidates)
-			return
+			return nil
 		}
 		fmt.Printf("No matches found. Trying again in %d seconds.\n", options.SleepDuration)
 		time.Sleep(options.SleepDuration * time.Second)
@@ -153,18 +160,18 @@ func PollLocationRangesURL(options PollOptions) {
 }
 
 // Locations querys locations EP and returns the data.
-func Locations() []*LocationInfo {
+func Locations() ([]*LocationInfo, error) {
 	var data []*LocationInfo
 
 	url := locationsURL
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
-	return data
+	return data, nil
 }

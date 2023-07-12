@@ -19,7 +19,14 @@ Usage of ./ge:
  ## List Locations
 
 ```
- ./ge -command locations
+./ge -command locations
+```
+
+ ## Notify
+
+```
+./ge -command notify [-send_mail] [-dests <comma separated list of emails>]
+
 ```
 
 ## Configure

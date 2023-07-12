@@ -24,7 +24,7 @@ var (
 )
 
 func help() {
-	fmt.Println(`Usage: ge -c <command> [-send_mail] [-dests <comma separated list of emails>]
+	fmt.Println(`Usage: ge -command <command> [-send_mail] [-dests <comma separated list of emails>]
 Available commands:
 locations: Display the list of known locations.
 notify: Poll for appointment openings at configured location and time range.
@@ -39,12 +39,18 @@ func main() {
 
 	switch *cmd {
 	case "locations":
-		locations := ge.Locations()
+		locations, err := ge.Locations()
+		if err != nil {
+			log.Fatalln(err)
+		}
 		for _, l := range locations {
 			fmt.Printf("ID: %d Name: %q State: %q City: %q\n", l.ID, l.Name, l.State, l.City)
 		}
 	case "notify":
-		locations := ge.Locations()
+		locations, err := ge.Locations()
+		if err != nil {
+			log.Fatalln(err)
+		}
 		idMap := make(ge.IDMap)
 		for _, l := range locations {
 			idMap[l.ID] = l
@@ -58,7 +64,7 @@ func main() {
 		}, *dests)
 		to := strings.Split(trimmedDests, ",")
 
-		ge.PollLocationRangesURL(ge.PollOptions{
+		err = ge.PollLocationRangesURL(ge.PollOptions{
 			SleepDuration: sleepDuration,
 			IDMap:         idMap,
 			IDs:           wantIDs,
@@ -79,6 +85,9 @@ func main() {
 				}
 			},
 		})
+		if err != nil {
+			log.Fatalln(err)
+		}
 	default:
 		help()
 		log.Fatalf("unknown command: %q", *cmd)
