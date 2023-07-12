@@ -6,36 +6,67 @@ import (
 	ge "global_entry/global_entry"
 	"global_entry/gmail"
 	"log"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
-// Update ranges here as desired.
-const (
-	rangeBegin    = "2023-12-01"
-	rangeEnd      = "2024-03-01"
-	sleepDuration = 30
-)
+type applicationConfig struct {
+	rangeBegin    string
+	rangeEnd      string
+	sleepDuration uint
+	ids           []int
+}
 
-// Update ID data structures as desired.
-// Running with command=locations will provide the ids.
-var (
-	wantIDs = []int{5180, 5002, 16547}
-)
+func idsStringToIntSlice(ids string) ([]int, error) {
+	stringSlice := strings.Split(ids, ",")
+	intSlice := make([]int, len(stringSlice))
 
-func help() {
-	fmt.Println(`Usage: ge -command <command> [-send_mail] [-dests <comma separated list of emails>]
-Available commands:
-locations: Display the list of known locations.
-notify: Poll for appointment openings at configured location and time range.
-`)
+	for i, s := range stringSlice {
+		id, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil {
+			return nil, fmt.Errorf("could not decode input ids: %v", err)
+		}
+		intSlice[i] = id
+	}
+
+	return intSlice, nil
+}
+
+func validateConfig(config *applicationConfig) error {
+	if _, err := time.Parse(time.DateOnly, config.rangeBegin); err != nil {
+		return fmt.Errorf("cannot convert rangeBegin %q to time.DateOnly", config.rangeBegin)
+	}
+	if _, err := time.Parse(time.DateOnly, config.rangeEnd); err != nil {
+		return fmt.Errorf("cannot convert rangeEnd %q to time.DateOnly", config.rangeEnd)
+	}
+
+	return nil
 }
 
 func main() {
-	cmd := flag.String("command", "", "'locations' will print out known locations. 'notify' will poll for open appointments.")
-	sendMail := flag.Bool("send_mail", false, "Set true to send a mail on matching appointment.")
-	dests := flag.String("to", "", "Comma separated list of destination emails.")
+	cmd := flag.String("c", "", "'The command to run. locations' will print out known locations. 'notify' will poll for open appointments.")
+	rangeBegin := flag.String("begin", "2023-12-01", "The start of the desired time range to search for appointments in time.DateOnly format.")
+	rangeEnd := flag.String("end", "2024-03-01", "The end of the desired time range to search for appointments in time.DateOnly format.")
+	sleepDuration := flag.Uint("sleep_duration", 30, "The time to sleep between polls in seconds.")
+	ids := flag.String("ids", "5180, 5002, 16547", "Comma separated list of location IDs to search for appointment openings. IDs can be found by the `locations` command.")
+	to := flag.String("to", "", "Comma separated list of destination emails.")
 	flag.Parse()
+
+	idsSlice, err := idsStringToIntSlice(*ids)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	config := &applicationConfig{
+		rangeBegin:    *rangeBegin,
+		rangeEnd:      *rangeEnd,
+		sleepDuration: *sleepDuration,
+		ids:           idsSlice,
+	}
+	if err := validateConfig(config); err != nil {
+		log.Fatalln(err)
+	}
 
 	switch *cmd {
 	case "locations":
@@ -56,26 +87,26 @@ func main() {
 			idMap[l.ID] = l
 		}
 
-		trimmedDests := strings.Map(func(r rune) rune {
+		trimmedTo := strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
 				return -1
 			}
 			return r
-		}, *dests)
-		to := strings.Split(trimmedDests, ",")
+		}, *to)
 
 		err = ge.PollLocationRangesURL(ge.PollOptions{
-			SleepDuration: sleepDuration,
+			SleepDuration: time.Duration(config.sleepDuration),
 			IDMap:         idMap,
-			IDs:           wantIDs,
-			RangeBegin:    rangeBegin,
-			RangeEnd:      rangeEnd,
+			IDs:           config.ids,
+			RangeBegin:    config.rangeBegin,
+			RangeEnd:      config.rangeEnd,
 			OnSuccess: func(candidates []string) {
 				subject := "Global Entry Availability"
 				body := []string{"Found candidate appointments. First available slot at each location is provided."}
 				body = append(body, candidates...)
-				if *sendMail {
-					if err := gmail.SendEmail(subject, body, to); err != nil {
+				if trimmedTo != "" {
+					splitTo := strings.Split(trimmedTo, ",")
+					if err := gmail.SendEmail(subject, body, splitTo); err != nil {
 						log.Fatal(err)
 					}
 				} else {
@@ -89,7 +120,7 @@ func main() {
 			log.Fatalln(err)
 		}
 	default:
-		help()
+		flag.Usage()
 		log.Fatalf("unknown command: %q", *cmd)
 	}
 }
